@@ -1,0 +1,68 @@
+# Picks up the packages that void-builds puts into its release "packages", adds them to the
+# repository index, drops replaced versions and signs index and packages with the repository key
+# (secret VOID_SIGNING_KEY). GitHub Pages serves the result.
+name: Sync packages
+
+on:
+  schedule:
+    - cron: "15,45 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    container: ghcr.io/void-linux/void-glibc-full
+    env:
+      SIGNING_KEY: ${{ secrets.VOID_SIGNING_KEY }}
+      SIGNED_BY: "bb8TheRobot <bb8therobot85@gmail.com>"
+      RELEASE: https://api.github.com/repos/AbyssWM/void-builds/releases/tags/packages
+    steps:
+      - name: Install tools
+        run: xbps-install -Syu xbps && xbps-install -y git curl jq
+
+      - uses: actions/checkout@v4
+
+      - name: Add new packages to the signed index
+        run: |
+          set -eu
+          git config --global --add safe.directory "$PWD"
+          urls=$(curl -fsSL "$RELEASE" | jq -r '.assets[].browser_download_url | select(endswith(".xbps"))')
+          new=""
+          for url in $urls; do
+            f=$(basename "$url")
+            [ -f "$f" ] || new="$new $f"
+          done
+          if [ -z "$new" ]; then
+            echo "No new packages."
+            exit 0
+          fi
+          if [ -z "$SIGNING_KEY" ]; then
+            echo "::error::The secret VOID_SIGNING_KEY is not set"
+            exit 1
+          fi
+
+          key="$(mktemp)"
+          printf '%s\n' "$SIGNING_KEY" > "$key"
+          for f in $new; do
+            curl -fsSLO "https://github.com/AbyssWM/void-builds/releases/download/packages/$f"
+          done
+          xbps-rindex -a $(for f in $new; do echo "$PWD/$f"; done)
+          # files of replaced versions, with their signatures
+          xbps-rindex -r "$PWD"
+          for f in *.sig2; do [ -f "${f%.sig2}" ] || rm -f "$f"; done
+          xbps-rindex --sign --signedby "$SIGNED_BY" --privkey "$key" "$PWD"
+          xbps-rindex --sign-pkg --privkey "$key" $(for f in $new; do echo "$PWD/$f"; done)
+          rm -f "$key"
+
+          git config user.name bb8TheRobot
+          git config user.email bb8TheRobot@users.noreply.github.com
+          git add -A
+          git commit -m "Packages:$new"
+          git push
