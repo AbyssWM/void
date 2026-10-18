@@ -22,6 +22,7 @@ jobs:
     env:
       SIGNING_KEY: ${{ secrets.VOID_SIGNING_KEY }}
       SIGNED_BY: "bb8TheRobot <bb8therobot85@gmail.com>"
+      GH_TOKEN: ${{ github.token }}
       RELEASE: https://api.github.com/repos/AbyssWM/void-builds/releases/tags/packages
     steps:
       - name: Install tools
@@ -33,7 +34,7 @@ jobs:
         run: |
           set -eu
           git config --global --add safe.directory "$PWD"
-          urls=$(curl -fsSL "$RELEASE" | jq -r '.assets[].browser_download_url | select(endswith(".xbps"))')
+          urls=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" "$RELEASE" | jq -r '.assets[].browser_download_url | select(endswith(".xbps"))')
           new=""
           for url in $urls; do
             f=$(basename "$url")
