@@ -13,7 +13,7 @@
 ---
 
 > [!WARNING]
-> **Experimental, pre-1.0.** Expect rough edges.
+> **First release.** Abyss is usable now, but this is the first version: expect bugs and please report them.
 
 ## 🚀 Install
 
